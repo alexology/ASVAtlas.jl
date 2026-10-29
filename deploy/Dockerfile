@@ -18,14 +18,16 @@ LABEL org.opencontainers.image.source="https://github.com/alexology/ASVAtlas.jl"
       org.opencontainers.image.description="ASVAtlas: reference ASV search, occurrence map and haplotype networks"
 
 # /opt/stats holds the usage log (counts only; mount a volume to keep it).
-RUN useradd --system --create-home asvatlas && mkdir /opt/depot /opt/stats && \n    chown asvatlas /opt/depot /opt/stats
+RUN useradd --system --create-home asvatlas && mkdir /opt/depot /opt/stats && \
+    chown asvatlas /opt/depot /opt/stats
 # Code compiled for generic x86-64 CPUs (as in the official Julia images), so
 # that an image built on GitHub does not recompile on the server.
 ENV JULIA_CPU_TARGET="generic;sandybridge,-xsaveopt,clone_all;haswell,-rdrnd,base(1)" \
     JULIA_DEPOT_PATH=/opt/depot \
     JULIA_NUM_THREADS=auto \
     ASVATLAS_HOST=0.0.0.0 \
-    ASVATLAS_PORT=8080     ASVATLAS_USAGE_LOG=/opt/stats/usage.tsv
+    ASVATLAS_PORT=8080 \
+    ASVATLAS_USAGE_LOG=/opt/stats/usage.tsv
 
 COPY --chown=asvatlas NucleotideSearch.jl /opt/NucleotideSearch.jl
 COPY --chown=asvatlas HaplotypeNetworks.jl /opt/HaplotypeNetworks.jl
