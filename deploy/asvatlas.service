@@ -1,0 +1,45 @@
+# systemd unit for ASVAtlas. Install (as root), adapting the paths:
+#   useradd --system --home /opt/asvatlas --shell /usr/sbin/nologin asvatlas
+#   cp deploy/asvatlas.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now asvatlas
+#   journalctl -u asvatlas -f            # log, one line per search
+# The application listens on 127.0.0.1 only; nginx publishes it (deploy/nginx.conf).
+
+[Unit]
+Description=ASVAtlas web application
+After=network.target
+
+[Service]
+Type=simple
+User=asvatlas
+Group=asvatlas
+WorkingDirectory=/opt/asvatlas/ASVAtlas.jl
+Environment=JULIA_NUM_THREADS=auto
+Environment=JULIA_DEPOT_PATH=/opt/asvatlas/depot
+Environment=ASVATLAS_FASTA=/srv/asvatlas/freshwater_invertebrates.fasta
+Environment=ASVATLAS_METADATA=/srv/asvatlas/freshwater_invertebrates_metadata.tsv
+Environment="ASVATLAS_NAME=Freshwater invertebrates"
+Environment=ASVATLAS_MARKER=COI-5P
+Environment=ASVATLAS_PRIMERS=BF3-BR2
+Environment=ASVATLAS_ABOUT=/srv/asvatlas/freshwater_invertebrates_about.json
+# Publish only these occurrence columns (default: all); round the coordinates.
+#Environment=ASVATLAS_FIELDS=site,habitat,date
+#Environment=ASVATLAS_COORDINATE_DIGITS=2
+Environment=ASVATLAS_HOST=127.0.0.1
+Environment=ASVATLAS_PORT=8080
+# Host names of the public site; requests for other names are refused.
+Environment=ASVATLAS_ALLOWED_HOSTS=asvatlas.example.org
+ExecStart=/usr/local/bin/julia /opt/asvatlas/ASVAtlas.jl/bin/asvatlas.jl
+Restart=on-failure
+RestartSec=5
+# Loading, indexing and the warm-up search take a while on large references.
+TimeoutStartSec=600
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/asvatlas/depot
+ReadOnlyPaths=/srv/asvatlas
+
+[Install]
+WantedBy=multi-user.target

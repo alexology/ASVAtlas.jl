@@ -1,0 +1,41 @@
+name = "ASVAtlas"
+uuid = "afd7de84-3224-44e2-8d92-8e214b7fc957"
+version = "0.1.0"
+authors = ["Alex Laini"]
+
+[deps]
+FASTX = "c2308a5c-f048-11e8-3e8a-31650f418d12"
+Genie = "c43c736e-a2d1-11e8-161f-af95117fbd1e"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+HaplotypeNetworks = "cbf08556-5a78-4929-9f1d-b7c097aa8767"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+NucleotideSearch = "573b8192-02fb-42eb-bd24-85f898daf624"
+ProfileAlignments = "c8a238b2-8c9b-4c0d-9a9d-98fcb4358f4c"
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
+
+[sources]
+HaplotypeNetworks = {path = "../HaplotypeNetworks.jl"}
+NucleotideSearch = {path = "../NucleotideSearch.jl"}
+ProfileAlignments = {path = "../ProfileAlignments.jl"}
+
+[compat]
+FASTX = "2"
+Genie = "5.35"
+HaplotypeNetworks = "0.1"
+HTTP = "1"
+JSON3 = "1"
+Logging = "1"
+NucleotideSearch = "0.1"
+ProfileAlignments = "0.3"
+Random = "1"
+Sockets = "1"
+Test = "1"
+julia = "1.10"
+
+[extras]
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test", "Random"]

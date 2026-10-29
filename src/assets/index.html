@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>ASVAtlas</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M16 3c4.6 6 9 11 9 16a9 9 0 0 1-18 0c0-5 4.4-10 9-16z" />
+      <path d="M10.5 20.5c1.8 1.4 3.6 1.4 5.5 0s3.7-1.4 5.5 0" />
+    </svg>
+    <div>
+      <div class="name">ASVAtlas</div>
+      <div class="tagline">Reference ASV search &amp; occurrence map</div>
+    </div>
+  </div>
+  <dl class="stats" id="stats" aria-live="polite">
+    <div><dt>Reference</dt><dd id="stat-name">—</dd></div>
+    <div id="stat-marker-box" hidden><dt>Marker</dt><dd id="stat-marker">—</dd></div>
+    <div id="stat-primers-box" hidden><dt>Primers</dt><dd id="stat-primers">—</dd></div>
+    <div><dt>ASVs</dt><dd id="stat-references">—</dd></div>
+    <div><dt>Georeferenced</dt><dd id="stat-georeferenced">—</dd></div>
+    <div><dt>Occurrences</dt><dd id="stat-occurrences">—</dd></div>
+  </dl>
+</header>
+
+<div class="tabbar">
+<nav class="tabs" role="tablist" aria-label="Views">
+  <button type="button" role="tab" id="tab-btn-search" aria-controls="tab-search" aria-selected="true">ASV search</button>
+  <button type="button" role="tab" id="tab-btn-network" aria-controls="tab-network" aria-selected="false">Haplotype network</button>
+  <button type="button" role="tab" id="tab-btn-about" aria-controls="tab-about" aria-selected="false">Reference data</button>
+</nav>
+  <a class="powered" href="https://dnambientale.it/en/index.html" target="_blank" rel="noopener noreferrer"
+     title="dnambientale.it (opens in a new tab)">
+    <span class="powered-label">Powered by</span>
+    <span class="powered-logo"><img src="dnambientale.png" width="22" height="20" alt=""></span>
+    <span class="powered-name">dnambientale.it</span>
+  </a>
+</div>
+
+<main class="search-page" id="tab-search" role="tabpanel" aria-labelledby="tab-btn-search">
+  <!-- Before a search: one thing to do. -->
+  <form id="search-form" class="start card" aria-label="Search">
+    <h1>Where in the world is my ASV?</h1>
+    <p class="start-lead">Paste your ASV sequences: the map shows where identical or similar ASVs
+      were found in <span id="start-name">the reference</span>.</p>
+    <div class="drop" id="drop">
+      <textarea id="sequences" rows="8" spellcheck="false" aria-label="Your ASVs"
+                placeholder="&gt;my_ASV&#10;ACGTTGCA…&#10;&#10;FASTA, or one sequence per line"></textarea>
+    </div>
+    <div class="input-meta">
+      <label class="file-button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0-10L6 7m4-4 4 4M4 13v3h12v-3"/></svg>
+        Load FASTA
+        <input type="file" id="file" accept=".fa,.fasta,.fas,.fna,.txt">
+      </label>
+      <button type="button" id="example" class="link-button" hidden>Try an example</button>
+      <button type="button" id="clear" class="link-button clear-button" hidden>Clear</button>
+      <span id="seq-count">No sequences</span>
+    </div>
+    <button type="submit" id="submit" class="primary">
+      <span class="spinner" aria-hidden="true"></span><span class="label">Find in the world</span>
+    </button>
+    <p id="status" role="status"></p>
+    <p class="start-note" id="start-note">The search starts with identical records (100%); you can
+      widen it to similar ASVs on the map.</p>
+    <details class="advanced" id="location-box">
+      <summary>Sampling locations (optional)</summary>
+      <p class="field-note">A CSV file with the three columns <code>asv_id,latitude,longitude</code>:
+        the identifiers of your FASTA and decimal degrees in WGS84, as given by GPS and web maps (e.g.
+        <code>my_ASV,47.393030,8.544811</code>; south and west negative). One row per place: an ASV
+        found at several places has several rows. Your ASVs are shown on the map as stars, with the distance to the nearest matching record. The
+        coordinates stay in your browser: they are not sent to the server.</p>
+      <div class="input-meta">
+        <label class="file-button">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0-10L6 7m4-4 4 4M4 13v3h12v-3"/></svg>
+          Load coordinates
+          <input type="file" id="coord-file" accept=".csv,.tsv,.txt">
+        </label>
+        <span id="coord-count" class="field-note">No table loaded</span>
+      </div>
+      <p class="field-note" id="coord-match"></p>
+    </details>
+    <details class="advanced">
+      <summary>Advanced options</summary>
+      <div class="field-row">
+        <label class="field" for="coverage">Query coverage
+          <span class="unit-input"><input type="number" id="coverage" min="1" max="100" step="1" value="90"><span>%</span></span>
+        </label>
+        <label class="field" for="max-hits">Matches per ASV
+          <span class="unit-input"><input type="number" id="max-hits" min="1" step="1" value="100"></span>
+        </label>
+      </div>
+      <label class="switch"><input type="checkbox" id="both-strands" checked>
+        <span class="track" aria-hidden="true"></span> Search both strands</label>
+    </details>
+  </form>
+
+  <!-- After a search: the map first, then one line per ASV. -->
+  <section id="results-view" class="results-view" hidden>
+    <div class="card map-card">
+      <div class="map-bar">
+        <div class="bar-actions">
+          <button type="button" id="new-search" class="new-search" title="Start again with other ASVs">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+            New search
+          </button>
+          <button type="button" id="edit" class="ghost edit-button" title="Change these ASVs or their coordinates">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 14.5V16h1.5L14 7.5 12.5 6 4 14.5zM13.5 5 15 6.5"/></svg>
+            <span id="edit-label">Edit ASVs</span>
+          </button>
+        </div>
+        <fieldset class="similarity">
+          <legend>Similarity</legend>
+          <div class="segmented" id="identity-group" role="radiogroup"></div>
+        </fieldset>
+      </div>
+      <div class="map-answer">
+        <p id="map-summary" aria-live="polite"></p>
+        <button type="button" id="show-all" class="ghost" hidden>Show all ASVs</button>
+      </div>
+      <div id="map-wrap">
+        <div id="map" aria-label="Map of the records matching your ASVs"></div>
+        <div id="map-note" hidden></div>
+        <div id="legend" hidden>
+          <span class="legend-title">Similarity</span>
+          <span><i class="dot b100"></i>Identical</span>
+          <span><i class="dot b99"></i>≥ 99%</span>
+          <span><i class="dot b97"></i>≥ 97%</span>
+          <span><i class="dot blow"></i>&lt; 97%</span>
+          <span id="legend-user" hidden><i class="star"></i>Your samples</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="results" class="card">
+      <div class="card-head">
+        <h2>Your ASVs</h2>
+        <details class="menu" id="download-menu">
+          <summary class="ghost">Download</summary>
+          <div class="menu-list">
+            <button type="button" data-table="summary"><b>Results per ASV</b>
+              <span>One row per ASV: best similarity, species, records</span></button>
+            <button type="button" data-table="hits"><b>All matches</b>
+              <span>Every matching reference ASV, with alignment details</span></button>
+            <button type="button" data-table="occurrences"><b>All records</b>
+              <span>Every record on the map, with coordinates</span></button>
+          </div>
+        </details>
+      </div>
+      <ul id="asv-list" class="asv-list"></ul>
+      <p class="hint">Select an ASV to see only its records on the map and where its matches come from.</p>
+    </div>
+  </section>
+</main>
+
+<main class="layout" id="tab-network" role="tabpanel" aria-labelledby="tab-btn-network" hidden>
+  <form id="network-form" class="panel" aria-label="Haplotype network">
+    <section>
+      <h2>Species of your ASVs</h2>
+      <label class="field" for="net-species">Species
+        <select id="net-species" class="select" disabled></select>
+      </label>
+      <p class="field-note" id="net-species-note">Search your ASVs first (tab “ASV search”): networks
+        are built for the species they match, with your ASVs placed in them.</p>
+    </section>
+
+    <section>
+      <h2>Network</h2>
+      <fieldset class="field">
+        <legend>Method</legend>
+        <div class="segmented four" id="net-method" role="radiogroup">
+          <label title="Median-joining network"><input type="radio" name="net-method" value="mjn" checked><span>MJN</span></label>
+          <label title="Statistical parsimony"><input type="radio" name="net-method" value="tcs"><span>TCS</span></label>
+          <label title="Minimum spanning network"><input type="radio" name="net-method" value="msn"><span>MSN</span></label>
+          <label title="Minimum spanning tree"><input type="radio" name="net-method" value="mst"><span>MST</span></label>
+        </div>
+      </fieldset>
+      <label class="field" for="net-epsilon">Epsilon (MJN, MSN)
+        <span class="unit-input"><input type="number" id="net-epsilon" min="0" max="10" step="1" value="0"></span>
+      </label>
+    </section>
+
+    <button type="submit" id="net-submit" class="primary">
+      <span class="spinner" aria-hidden="true"></span><span class="label">Build network</span>
+    </button>
+    <p id="net-status" role="status"></p>
+
+    <section id="net-group" hidden>
+      <h2>Grouping</h2>
+      <label class="field" for="net-centre">Centre
+        <select id="net-centre" class="select"></select>
+      </label>
+      <div class="field">
+        <div class="slider-head">
+          <label for="net-distance">Mutations from the centre</label>
+          <output id="net-distance-value" for="net-distance">0</output>
+        </div>
+        <input type="range" id="net-distance" min="0" max="1" step="1" value="0">
+        <div class="slider-scale"><span>0</span><span id="net-distance-max">1</span></div>
+      </div>
+      <p class="group-note" id="net-group-note"></p>
+    </section>
+
+    <p class="field-note">Sequences are oriented, aligned, and columns with gaps or ambiguous bases
+      are left out, so haplotypes differ only by substitutions in the shared region. Distances are
+      numbers of differences between haplotypes. Node size: number of occurrences.</p>
+  </form>
+
+  <section class="content">
+    <div class="card">
+      <div class="card-head">
+        <h2 id="net-title">Haplotypes on the map</h2>
+      </div>
+      <div class="map-wrap">
+        <div id="net-map" class="map tall" aria-label="Map of the haplotypes"></div>
+        <div id="net-map-note" class="map-note">Choose a taxon and build its haplotype network.</div>
+        <div id="net-overlay" hidden>
+          <div class="overlay-head">
+            <span id="net-overlay-title">Network</span>
+            <button type="button" id="net-zoom-group" title="Zoom on the group of the centre">Group</button>
+            <button type="button" id="net-fit" title="Fit the whole network">Fit</button>
+            <button type="button" id="net-expand" aria-pressed="false" title="Enlarge the network">⤢</button>
+          </div>
+          <svg id="net-svg" role="img" aria-label="Haplotype network"></svg>
+        </div>
+        <div id="net-legend" class="map-legend" hidden></div>
+      </div>
+    </div>
+
+    <div class="card" id="net-results" hidden>
+      <div class="card-head">
+        <h2>Haplotypes</h2>
+        <div class="downloads">
+          <span>Export TSV</span>
+          <button type="button" class="ghost" id="net-download">Haplotypes</button>
+        </div>
+      </div>
+      <div class="kpis">
+        <div><span class="kpi-value" id="net-kpi-haps">0</span><span class="kpi-label" id="net-kpi-haps-label">Haplotypes</span></div>
+        <div><span class="kpi-value" id="net-kpi-in">0</span><span class="kpi-label">Haplotypes in the group</span></div>
+        <div><span class="kpi-value" id="net-kpi-sites">0</span><span class="kpi-label">Places with the group</span></div>
+        <div><span class="kpi-value" id="net-kpi-var">0</span><span class="kpi-label" id="net-kpi-var-label">Variable sites</span></div>
+      </div>
+      <div class="table-wrap scroll">
+        <table id="net-table">
+          <thead><tr>
+            <th>Haplotype</th><th class="num">Mutations from centre</th><th class="num">Occurrences</th>
+            <th class="num">Places</th><th>Taxon</th><th>Reference ASVs</th><th>Your ASVs</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint">Select a haplotype in the table or in the network to make it the centre.</p>
+    </div>
+  </section>
+</main>
+
+<main class="about-page" id="tab-about" role="tabpanel" aria-labelledby="tab-btn-about" hidden>
+  <div class="card about-pickers">
+    <label class="field" for="about-marker">Marker
+      <select id="about-marker" class="select"></select>
+    </label>
+    <label class="field" for="about-db">Reference database
+      <select id="about-db" class="select"></select>
+    </label>
+    <p class="field-note">Each reference holds the ASVs of one marker and one primer pair.</p>
+  </div>
+  <div id="about-content"></div>
+</main>
+
+<footer class="footer">
+  Sequence search: NucleotideSearch.jl · Networks: HaplotypeNetworks.jl, ProfileAlignments.jl ·
+  Map: Natural Earth (public domain), Leaflet
+</footer>
+
+<script src="leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+<script src="network.js"></script>
+<script src="about.js"></script>
+</body>
+</html>

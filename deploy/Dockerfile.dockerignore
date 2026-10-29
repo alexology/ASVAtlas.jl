@@ -1,0 +1,11 @@
+# Only ASVAtlas and its unregistered dependencies are needed (`[sources]` in
+# ASVAtlas.jl/Project.toml); local Manifests may hold Windows paths.
+*
+!ASVAtlas.jl
+!NucleotideSearch.jl
+!HaplotypeNetworks.jl
+!ProfileAlignments.jl
+**/Manifest.toml
+**/.git
+**/test
+**/reference

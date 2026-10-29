@@ -1,0 +1,23 @@
+id	kingdom	phylum	class	order	family	genus	species	latitude	longitude	site	habitat	date
+REF_001	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus alpinus	46.34897	10.70302	Site A01	lake	2025-08-26
+REF_001	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus alpinus	46.06387	11.37671	Site B02	stream	2025-07-01
+REF_002	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus alpinus	46.7844	12.18045	Site C01	lake	2025-07-07
+REF_003	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus alpinus					
+REF_004	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris	45.22173	7.56343	Site E01	stream	2025-04-10
+REF_004	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris	46.2495	8.47014	Site F02	stream	2025-05-16
+REF_005	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris	45.47007	7.47036	Site G01	stream	2025-04-06
+REF_005	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris	46.13321	9.23372	Site H02	stream	2025-05-16
+REF_005	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris	46.14852	8.47591	Site I03	spring	2025-09-14
+REF_005	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris	46.07192	8.02743	Site J04	stream	2025-06-25
+REF_006	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus lacustris					
+REF_007	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Fictiferus	Fictiferus sp.	44.19547	10.75427	Site L01	spring	2025-06-13
+REF_008	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Pseudofictus	Pseudofictus minor	40.70772	13.88972	Site M01	stream	2025-04-28
+REF_009	Animalia	Demonstrata	Syntheticae	Exemplaria	Fictiferidae	Pseudofictus	Pseudofictus minor					
+REF_010	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus primus	41.59169	16.25959	Site O01	stream	2025-06-17
+REF_010	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus primus	41.70545	16.47484	Site P02	pond	2025-08-21
+REF_010	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus primus	40.16686	16.99905	Site Q03	pond	2025-05-26
+REF_011	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus primus	40.32951	16.42106	Site R01	pond	2025-08-22
+REF_011	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus primus	40.46708	15.95134	Site S02	lake	2025-08-16
+REF_012	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus primus					
+REF_013	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus secundus	37.76186	13.43065	Site U01	pond	2025-09-04
+REF_014	Animalia	Demonstrata	Syntheticae	Exemplaria	Exemplidae	Exemplus	Exemplus secundus					

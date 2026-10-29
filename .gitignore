@@ -1,0 +1,15 @@
+Manifest.toml
+*.cov
+*.mem
+deploy/data/
+# Reference data are never committed: the server reads them from its own folder.
+freshwater_invertebrates*
+/data/
+*.fasta
+*.fa
+*.tsv
+*.csv
+*.xlsx
+!examples/data/*.fasta
+!examples/data/*.tsv
+!test/data/**

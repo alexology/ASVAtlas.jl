@@ -1,0 +1,26 @@
+# docker compose -f ASVAtlas.jl/deploy/docker-compose.yml up -d --build
+# (run from the folder containing ASVAtlas.jl, NucleotideSearch.jl,
+# HaplotypeNetworks.jl and ProfileAlignments.jl).
+# Put the reference files in ./data next to this file, or change the volume.
+services:
+  asvatlas:
+    build:
+      context: ../..
+      dockerfile: ASVAtlas.jl/deploy/Dockerfile
+    image: asvatlas
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"     # published by nginx; use "8080:8080" to expose directly
+    volumes:
+      - ./data:/data:ro
+    environment:
+      ASVATLAS_FASTA: /data/freshwater_invertebrates.fasta
+      ASVATLAS_METADATA: /data/freshwater_invertebrates_metadata.tsv
+      ASVATLAS_NAME: "Freshwater invertebrates"
+      ASVATLAS_MARKER: COI-5P
+      ASVATLAS_PRIMERS: BF3-BR2
+      ASVATLAS_ABOUT: /data/freshwater_invertebrates_about.json
+      # Publish only these occurrence columns (default: all); round the coordinates.
+      # ASVATLAS_FIELDS: site,habitat,date
+      # ASVATLAS_COORDINATE_DIGITS: "2"
+      ASVATLAS_ALLOWED_HOSTS: asvatlas.example.org
