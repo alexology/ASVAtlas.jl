@@ -1,0 +1,39 @@
+# Caddy in front of ASVAtlas: HTTPS (automatic certificates), the usage
+# reports at /stats/ behind a password, and an access log for GoAccess in which
+# the last part of every IP address is removed. Replace asvatlas.example.org
+# with your domain (also in docker-compose.yml) and the password hash, made with
+#   docker compose run --rm caddy caddy hash-password
+
+asvatlas.example.org {
+	encode gzip
+
+	# Usage reports written by update-stats.sh (index.html: visits;
+	# usage.txt: searches and networks).
+	handle_path /stats/* {
+		basic_auth {
+			admin REPLACE_WITH_THE_HASH
+		}
+		root * /srv/stats
+		file_server
+	}
+
+	handle {
+		reverse_proxy asvatlas:8080
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 50MiB
+			roll_keep 10
+		}
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip ip_mask 24 48
+				request>client_ip ip_mask 24 48
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+}

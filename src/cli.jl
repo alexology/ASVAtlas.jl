@@ -13,6 +13,7 @@ const _CLI_OPTIONS = (
     ("marker", "ASVATLAS_MARKER", "marker of the reference ASVs shown in the page (e.g. COI-5P)"),
     ("primers", "ASVATLAS_PRIMERS", "primer pair of the reference ASVs shown in the page (e.g. BF3-BR2)"),
     ("about", "ASVATLAS_ABOUT", "JSON description of the reference (tab \"Reference data\"; public)"),
+    ("usage-log", "ASVATLAS_USAGE_LOG", "file for usage counts (no user data; see bin/asvatlas-usage.jl)"),
     ("host", "ASVATLAS_HOST", "address to listen on (default 127.0.0.1; 0.0.0.0 for all)"),
     ("port", "ASVATLAS_PORT", "port (default 8080)"),
     ("max-queries", "ASVATLAS_MAX_QUERIES", "most queries per search (default 10000)"),
@@ -79,6 +80,7 @@ function _parse_cli(args::AbstractVector{<:AbstractString}, env = ENV)
             name = get(opts, "name", basename(opts["fasta"])),
             marker = get(opts, "marker", ""), primers = get(opts, "primers", ""),
             about = get(opts, "about", nothing),
+            usage_log = get(opts, "usage-log", ""),
             host = get(opts, "host", "127.0.0.1"), port = int("port", 8080),
             max_queries = int("max-queries", 10_000), max_hits = int("max-hits", 500),
             max_length = int("max-length", 20_000),
@@ -138,7 +140,7 @@ function main(args = ARGS)
         println(stderr, "asvatlas: cannot read the example: ", sprint(showerror, err))
         return 1
     end
-    serve(ref; example, host = o.host, port = o.port, max_queries = o.max_queries, max_hits = o.max_hits,
+    serve(ref; example, usage_log = o.usage_log, host = o.host, port = o.port, max_queries = o.max_queries, max_hits = o.max_hits,
           max_length = o.max_length, allowed_hosts = o.allowed_hosts,
           max_network_sequences = o.max_network_sequences, min_identity = o.min_identity)
     return 0

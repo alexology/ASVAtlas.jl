@@ -628,12 +628,55 @@ end
     end
 end
 
+@testset "Usage log" begin
+    ref = load_reference(joinpath(EXAMPLE, "reference.fasta");
+                         metadata = joinpath(EXAMPLE, "reference_metadata.tsv"))
+    fasta = read(joinpath(EXAMPLE, "queries.fasta"), String)
+    mktempdir() do dir
+        log = joinpath(dir, "stats", "usage.tsv")
+        port, sock = listenany(ip"127.0.0.1", 23000)
+        close(sock)
+        server = serve(ref; port, async = true, warmup = true, usage_log = log)
+        url = "http://127.0.0.1:$port"
+        post(path, body) = HTTP.post(url * path, ["Content-Type" => "application/json"],
+                                     JSON3.write(body); status_exception = false)
+        try
+            @test post("/api/search", (sequences = fasta, identity = 97)).status == 200
+            @test post("/api/network", (taxon = "Fictiferus alpinus", sequences = fasta,
+                                        include = ["ASV_identical"], identity = 100)).status == 200
+            @test post("/api/search", (sequences = fasta, identity = 50)).status == 400   # refused: not counted
+        finally
+            shutdown(server)
+        end
+        lines = readlines(log)
+        # Header, one search, one network: the warm-up and refused requests are not usage.
+        @test length(lines) == 3 && startswith(lines[1], "time	event")
+        f = split(lines[2], '	')
+        @test f[2] == "search" && f[3] == "6" && f[5] == "97"
+        g = split(lines[3], '	')
+        @test g[2] == "network" && g[7] == "Fictiferus alpinus" && g[8] == "mjn"
+        # Counts only: no sequence and no identifier of the user's ASVs.
+        text = read(log, String)
+        @test !occursin("ASV_identical", text) && !occursin(r"[ACGT]{20}", text)
+        r = usage_report(log)
+        @test occursin("Searches:           1", r) && occursin("Networks:           1", r)
+        @test occursin("Fictiferus alpinus", r) && occursin("Similarity of the searches", r)
+        @test_throws ArgumentError usage_report(write_file(dir, "other.tsv", "a	b
+"))
+    end
+    # A server started without a usage log does not keep the previous one.
+    port, sock = listenany(ip"127.0.0.1", 23100)
+    close(sock)
+    shutdown(serve(ref; port, async = true, warmup = false))
+    @test ASVAtlas._usage_path[] == ""
+end
+
 @testset "Command line" begin
     noenv = Dict{String,String}()
     o = ASVAtlas._parse_cli(["--fasta", "r.fa", "--metadata=m.tsv", "--port", "9000",
                              "--host", "0.0.0.0", "--max-queries", "5"], noenv)
     @test o == (fasta = "r.fa", metadata = "m.tsv", fields = nothing, coordinate_digits = nothing,
-                name = "r.fa", marker = "", primers = "", about = nothing, host = "0.0.0.0", port = 9000,
+                name = "r.fa", marker = "", primers = "", about = nothing, usage_log = "", host = "0.0.0.0", port = 9000,
                 max_queries = 5, max_hits = 500,
                 max_length = 20_000, max_network_sequences = 300, min_identity = 90,
                 example = nothing, allowed_hosts = String[])

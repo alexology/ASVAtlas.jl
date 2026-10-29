@@ -1,0 +1,44 @@
+# ASVAtlas behind Caddy (HTTPS with automatic certificates, access log for the
+# visit statistics), with the image published on GitHub: nothing is built on
+# the server. In /srv/asvatlas on the server:
+#   docker-compose.yml  this file
+#   Caddyfile           replace asvatlas.example.org with your domain
+#   update-stats.sh     writes the usage reports (run it every night)
+#   data/               the reference files (never in the repository)
+# Start:   docker compose up -d
+# Update:  docker compose pull && docker compose up -d
+# See "Running on a server" in the README.
+services:
+  asvatlas:
+    image: ghcr.io/alexology/asvatlas:latest
+    restart: unless-stopped
+    volumes:
+      - ./data:/data:ro
+      - usage:/opt/stats            # usage log (counts only), kept across updates
+    environment:
+      ASVATLAS_FASTA: /data/freshwater_invertebrates.fasta
+      ASVATLAS_METADATA: /data/freshwater_invertebrates_metadata.tsv
+      ASVATLAS_ABOUT: /data/freshwater_invertebrates_about.json
+      ASVATLAS_NAME: "Freshwater invertebrates"
+      ASVATLAS_MARKER: COI-5P
+      ASVATLAS_PRIMERS: BF3-BR2
+      # Occurrence columns published with the matches.
+      ASVATLAS_FIELDS: dataset,site,read_abundance
+      ASVATLAS_ALLOWED_HOSTS: asvatlas.example.org
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./logs:/var/log/caddy       # access log, IP addresses truncated
+      - ./stats:/srv/stats:ro       # reports written by update-stats.sh
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  usage:
+  caddy_data:
+  caddy_config:

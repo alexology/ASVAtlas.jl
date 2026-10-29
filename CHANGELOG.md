@@ -85,3 +85,8 @@
 - GitHub workflow building the container image and publishing it on the
   GitHub Container Registry (ghcr.io/alexology/asvatlas); image built for
   generic x86-64 CPUs; docker-compose uses the published image.
+- Usage statistics: usage log of counts only (`serve(...; usage_log)`,
+  `--usage-log`, `usage_report`, `bin/asvatlas-usage.jl`; on in the image);
+  `deploy/caddy/` with Caddy (HTTPS, access log with truncated IP addresses,
+  reports at /stats/ behind a password) and GoAccess (`update-stats.sh`);
+  privacy note in the footer.

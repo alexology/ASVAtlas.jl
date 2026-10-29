@@ -810,3 +810,9 @@ i.star {
 .clear-button:hover { color: var(--error); }
 .clear-button[hidden], #clear[hidden] { display: none; }
 .asv-distance.none { color: var(--muted); font-style: italic; }
+
+/* Privacy note in the footer */
+.privacy { margin: 0 auto 8px; max-width: 720px; }
+.privacy summary { cursor: pointer; display: inline-block; color: var(--muted); }
+.privacy summary:hover { color: var(--text-2); }
+.privacy p { margin: 8px 0 4px; text-align: left; line-height: 1.55; color: var(--text-2); }

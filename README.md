@@ -283,6 +283,43 @@ from the internet, use the nginx password or a private network. Searches run
 one at a time, so the limits below also bound how long one user can hold the
 server.
 
+### Docker and Caddy (e.g. a netcup or Hetzner VPS)
+
+The simplest set-up on a VPS (x86-64: the image is not built for ARM) uses
+the image published on GitHub and Caddy for HTTPS; `deploy/caddy/` has the
+files, to copy to `/srv/asvatlas` on the server:
+
+1. Point a DNS `A` record of your domain to the server; install Docker
+   (`curl -fsSL https://get.docker.com | sh`) and open ports 22, 80 and 443.
+2. Copy the reference files to `/srv/asvatlas/data/` (e.g. with `scp`).
+3. In `docker-compose.yml` and `Caddyfile` write your domain instead of
+   `asvatlas.example.org`; in `Caddyfile` the password hash for `/stats/`,
+   made with `docker compose run --rm caddy caddy hash-password`. Check the
+   file with `docker compose run --rm caddy caddy validate --config /etc/caddy/Caddyfile`.
+4. `docker compose up -d`, then `docker compose logs -f asvatlas` until
+   "Listening on". Updates: `docker compose pull && docker compose up -d`.
+
+### Usage statistics
+
+Two sources, both without cookies and without personal data:
+
+- **Visits**: Caddy writes an access log with the last part of each IP
+  address removed (`/24` for IPv4, `/48` for IPv6); GoAccess turns it into a
+  report (visitors per day, pages, browsers, referring sites).
+- **Use of the application**: with `--usage-log` (`ASVATLAS_USAGE_LOG`, set to
+  `/opt/stats/usage.tsv` in the image) each search and network adds one line
+  of counts: time, number of query ASVs and of ASVs with matches, similarity,
+  duration, and species, method and size of networks. No address, sequence
+  or coordinate is written. `bin/asvatlas-usage.jl` (or `usage_report`) sums
+  it up by day or month, with the similarity levels chosen and the species of
+  the networks.
+
+`deploy/caddy/update-stats.sh` writes both reports to `stats/`, served at
+`https://<domain>/stats/` behind the password (`index.html` for visits,
+`usage.txt` for searches and networks); run it every night with cron
+(`15 3 * * * cd /srv/asvatlas && sh update-stats.sh`). The page has a short
+privacy note in its footer saying what is kept.
+
 ### Container image
 
 The workflow `.github/workflows/docker.yml` builds `deploy/Dockerfile` on
@@ -398,7 +435,7 @@ used by the page is `GET /api/dataset` and `POST /api/search` with
 
 ## Validation
 
-`julia -t 4 --project=. test/runtests.jl` (409 tests): delimited files with
+`julia -t 4 --project=. test/runtests.jl` (420 tests): delimited files with
 quotes and CRLF, SINTAX headers, metadata precedence and errors, query
 parsing, search at 100/97/90% (nested hit sets, thresholds, reverse
 complement, partial queries with their coordinates on the reference, ties

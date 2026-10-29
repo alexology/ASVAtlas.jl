@@ -163,8 +163,12 @@ function _network_request(ref, payload::AbstractString, lock; max_network_sequen
     end
     @info "Network: $(uppercase(method)) of $taxon, $(length(tn.ids)) sequences, " *
           "$(HN.nhaplotypes(tn.network.hapset)) haplotypes, $(round(t; digits = 2)) s"
+    _log_usage("network"; queries = length(queries), identity = _level(identity), seconds = t,
+               species = taxon, method, sequences = length(tn.ids))
     return _network_json(ref, tn)
 end
+
+_level(x) = isinteger(x) ? Int(x) : x
 
 # Search results with the references they hit, each reference once.
 function _results_json(ref::ReferenceDataset, results, params)
@@ -214,8 +218,10 @@ function _search_request(ref, payload::AbstractString, lock; max_queries, max_hi
     strand in ("both", "plus") || throw(ArgumentError("strand must be \"both\" or \"plus\""))
     t = @elapsed results = Base.@lock lock search_asvs(ref, queries; identity, query_cov,
                                                        maxhits, strand = Symbol(strand), threads)
+    found = count(r -> !isempty(r.hits), results)
     @info "Search: $(length(queries)) quer$(length(queries) == 1 ? "y" : "ies") at ≥ $identity% " *
-          "identity, $(count(r -> !isempty(r.hits), results)) with hits, $(round(t; digits = 2)) s"
+          "identity, $found with hits, $(round(t; digits = 2)) s"
+    _log_usage("search"; queries = length(queries), found, identity = _level(identity), seconds = t)
     params = (identity = identity, query_cov = query_cov, max_hits = maxhits, strand = strand)
     return _results_json(ref, results, params)
 end
@@ -428,6 +434,11 @@ requests whose `Host` header names another host, which protects against DNS
 rebinding; empty accepts any. The page and its files are served from a fixed
 list, with a restrictive Content Security Policy.
 
+`usage_log` is a file to which each search and network adds one line of
+counts (time, number of query ASVs and of ASVs with matches, similarity,
+duration; species, method and size of networks): no address, sequence or
+coordinate of the users. [`usage_report`](@ref) sums it up.
+
 `example` is FASTA text offered by the button "Try an example" of the page
 (no button when empty). It is sent to every visitor: use sequences that may
 be public, not reference sequences that should stay private.
@@ -454,12 +465,18 @@ function serve(ref::ReferenceDataset; host::AbstractString = "127.0.0.1", port::
                max_connections::Integer = 128, allowed_hosts = String[],
                max_network_sequences::Integer = 300, min_identity::Real = _MIN_WEB_IDENTITY,
                threads::Integer = Threads.nthreads(), warmup::Bool = true,
-               example::AbstractString = "")
+               example::AbstractString = "", usage_log::AbstractString = "")
     0 < min_identity <= 100 || throw(ArgumentError("min_identity must be in (0, 100]"))
     sizeof(example) <= 2^16 || throw(ArgumentError("the example must be at most 64 KiB"))
     ip = string(Sockets.getaddrinfo(host))
     _check_port(ip, Int(port))
+    _usage_path[] = ""                # the warm-up is not usage
     warmup && _warmup(ref, threads)
+    if !isempty(usage_log)
+        mkpath(dirname(abspath(usage_log)))
+        _usage_path[] = abspath(usage_log)
+        @info "Usage log (counts only): $(_usage_path[])"
+    end
     Genie.config.app_env = "prod"     # no Revise call on every request
     # Genie's static file handler is not used: the files are routes, from a
     # fixed list (see `_STATIC`), and the document root is an empty folder.

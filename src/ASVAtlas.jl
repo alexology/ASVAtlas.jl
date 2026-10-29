@@ -31,13 +31,14 @@ export ReferenceDataset, Occurrence, ReferenceHit, ASVResult, IDENTITY_LEVELS, K
        load_reference, parse_queries, read_queries, search_asvs, best_taxa, taxon,
        summary_table, hit_table, occurrence_table, write_table, serve, shutdown,
        TaxonNetwork, NETWORK_METHODS, taxon_network, taxon_references, taxon_list,
-       network_sites, reference_sequence
+       network_sites, reference_sequence, usage_report
 
 include("table.jl")
 include("reference.jl")
 include("search.jl")
 include("output.jl")
 include("networks.jl")
+include("usage.jl")
 include("server.jl")
 include("cli.jl")
 

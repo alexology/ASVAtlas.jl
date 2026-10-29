@@ -16,6 +16,7 @@ services:
       - "127.0.0.1:8080:8080"     # published by nginx; use "8080:8080" to expose directly
     volumes:
       - ./data:/data:ro
+      - usage:/opt/stats            # usage log (counts only), kept across updates
     environment:
       ASVATLAS_FASTA: /data/freshwater_invertebrates.fasta
       ASVATLAS_METADATA: /data/freshwater_invertebrates_metadata.tsv
@@ -27,3 +28,5 @@ services:
       # ASVATLAS_FIELDS: site,habitat,date
       # ASVATLAS_COORDINATE_DIGITS: "2"
       ASVATLAS_ALLOWED_HOSTS: asvatlas.example.org
+volumes:
+  usage:
