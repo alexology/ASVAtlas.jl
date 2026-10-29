@@ -14,7 +14,7 @@
 
 FROM julia:1.12.2
 
-LABEL org.opencontainers.image.source="https://github.com/alexology/ASVAtlas.jl" \
+LABEL org.opencontainers.image.source="https://github.com/alexology/ASVAtlas" \
       org.opencontainers.image.description="ASVAtlas: reference ASV search, occurrence map and haplotype networks"
 
 RUN useradd --system --create-home asvatlas && mkdir /opt/depot && chown asvatlas /opt/depot
