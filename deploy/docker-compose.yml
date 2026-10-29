@@ -1,13 +1,16 @@
-# docker compose -f ASVAtlas.jl/deploy/docker-compose.yml up -d --build
-# (run from the folder containing ASVAtlas.jl, NucleotideSearch.jl,
-# HaplotypeNetworks.jl and ProfileAlignments.jl).
+# With the image published by GitHub (no build on the server):
+#   docker compose -f docker-compose.yml up -d
+# To build it here instead, uncomment `build` and run, from the folder
+# containing ASVAtlas.jl, NucleotideSearch.jl, HaplotypeNetworks.jl and
+# ProfileAlignments.jl:
+#   docker compose -f ASVAtlas.jl/deploy/docker-compose.yml up -d --build
 # Put the reference files in ./data next to this file, or change the volume.
 services:
   asvatlas:
-    build:
-      context: ../..
-      dockerfile: ASVAtlas.jl/deploy/Dockerfile
-    image: asvatlas
+    image: ghcr.io/alexology/asvatlas:latest
+    # build:
+    #   context: ../..
+    #   dockerfile: ASVAtlas.jl/deploy/Dockerfile
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"     # published by nginx; use "8080:8080" to expose directly

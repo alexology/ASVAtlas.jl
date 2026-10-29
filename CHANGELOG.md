@@ -82,3 +82,6 @@
   invertebrates" (display name only; files unchanged).
 - With a table of coordinates, ASVs without a row in it are marked ("no
   sampling place in your table"), also in the tooltip of their network node.
+- GitHub workflow building the container image and publishing it on the
+  GitHub Container Registry (ghcr.io/alexology/asvatlas); image built for
+  generic x86-64 CPUs; docker-compose uses the published image.

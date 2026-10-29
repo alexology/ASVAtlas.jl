@@ -283,6 +283,19 @@ from the internet, use the nginx password or a private network. Searches run
 one at a time, so the limits below also bound how long one user can hold the
 server.
 
+### Container image
+
+The workflow `.github/workflows/docker.yml` builds `deploy/Dockerfile` on
+GitHub and publishes the image as `ghcr.io/alexology/asvatlas`: tag `latest`
+(and `main`, `sha-…`) for every push to `main`, `1.2.3` and `1.2` for a
+release tag `v1.2.3`; pull requests only build it. The workflow checks out the
+three unregistered dependencies (public repositories) next to ASVAtlas.jl, as
+the Dockerfile expects. The image holds the code only, compiled for generic
+x86-64 CPUs: the reference files are mounted at run time (see
+`deploy/docker-compose.yml`, which uses the published image). On first
+publication the package on GitHub is private: make it public in its settings,
+or log the server in to `ghcr.io`.
+
 ### Keeping the reference private
 
 The page answers questions about the ASVs it is sent; it does not publish the
