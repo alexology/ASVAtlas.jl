@@ -74,7 +74,8 @@ async function loadDataset() {
   for (const v of dataset.identity_levels) {
     const input = el("input", { type: "radio", name: "identity", value: v });
     input.checked = v === 100;
-    input.addEventListener("change", () => { if (current) search(); });
+    // A new level filters the results already in the page (no new search).
+    input.addEventListener("change", () => { if (full) showLevel(v); });
     group.append(el("label", { title: v === 100 ? "Identical records" : `At least ${v}% similar` },
       input, el("span", {}, v + "%")));
   }
@@ -608,7 +609,7 @@ function tryButton(level) {
   b.addEventListener("click", (ev) => {
     ev.stopPropagation();
     setIdentity(level);
-    search();
+    showLevel(level);
   });
   return b;
 }
@@ -831,6 +832,79 @@ function showView(results) {
 }
 
 let searching = false;
+let full = null;      // the search at the lowest level, of which `current` is a view
+let levelToken = 0;   // the last level asked for (older answers are ignored)
+
+const lowestLevel = () => Math.min(...((dataset && dataset.identity_levels) || [100]));
+
+async function postSearch(body) {
+  const res = await fetch("api/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+// The results at similarity `v`, from the search at the lowest level: the
+// matches of each ASV are filtered in the page. An ASV that reached the
+// largest number of matches may lack some at `v` (the search stopped there):
+// those ASVs alone are searched again at `v`, so the results are those of a
+// search at `v`.
+async function levelResults(v) {
+  if (full.levels.has(v)) return full.levels.get(v);
+  const cap = full.params.max_hits;
+  const redo = v > full.params.identity ? full.queries.filter((q) => q.hits.length >= cap) : [];
+  let again = new Map(), refs = full.references;
+  if (redo.length) {
+    const seqs = new Map(queryRecords(full.sequences).map((r) => [r.id, r.seq]));
+    const data = await postSearch({ ...full.request, identity: v,
+      sequences: redo.map((q) => `>${q.id}\n${seqs.get(q.id)}`).join("\n") });
+    again = new Map(data.queries.map((q) => [q.id, q]));
+    refs = { ...full.references, ...data.references };
+  }
+  const queries = full.queries.map((q) => {
+    if (again.has(q.id)) return again.get(q.id);
+    const hits = q.hits.filter((h) => h.identity >= v - 1e-9);
+    return { ...q, hits, best_taxa: hits.length ? q.best_taxa : [] };
+  });
+  const out = { ...full, queries, references: refs, params: { ...full.params, identity: v } };
+  full.levels.set(v, out);
+  return out;
+}
+
+// Shows the results at similarity `v`; a search of the server is needed only
+// for ASVs at the limit of matches (see levelResults).
+async function showLevel(v, first = false) {
+  const token = ++levelToken;
+  const slow = !full.levels.has(v) && v > full.params.identity &&
+    full.queries.some((q) => q.hits.length >= full.params.max_hits);
+  if (slow && !first) {
+    $("map-summary").className = "busy";
+    $("map-summary").textContent = `Searching at ${levelText(v)}…`;
+    $("map-wrap").classList.add("busy");
+  }
+  try {
+    const out = await levelResults(v);
+    if (token !== levelToken) return;
+    current = out;
+    selected = null;
+    $("show-all").hidden = true;
+    showView(true);
+    renderResults();
+    drawMap();
+    updateSummary();
+  } catch (e) {
+    if (token !== levelToken) return;
+    if (first) throw e;
+    $("map-summary").className = "error";
+    $("map-summary").textContent = e.message;
+  } finally {
+    if (token === levelToken) $("map-wrap").classList.remove("busy");
+  }
+}
 
 // Searches the ASVs of the text area at the chosen similarity. Errors are
 // shown under the button of the form, or above the map in the results.
@@ -844,9 +918,11 @@ async function search() {
     if (fromStart || !current) setStatus(e.message, true);
     return;
   }
+  // One search at the lowest similarity of the page: every higher level is a
+  // filter of it, applied in the page (see showLevel).
   const body = {
     sequences: $("sequences").value,
-    identity: chosenIdentity(),
+    identity: lowestLevel(),
     query_cov: Number($("coverage").value) / 100,
     max_hits: Number($("max-hits").value),
     strand: $("both-strands").checked ? "both" : "plus",
@@ -857,30 +933,23 @@ async function search() {
     setStatus("Searching the reference…");
   } else {
     $("map-summary").className = "busy";
-    $("map-summary").textContent = `Searching at ${levelText(body.identity)}…`;
+    $("map-summary").textContent = "Searching…";
     $("map-wrap").classList.add("busy");
   }
   try {
-    const res = await fetch("api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.statusText);
+    const data = await postSearch(body);
     // The countries need the world map; the results are shown without it.
     await (worldData || Promise.resolve()).catch(() => null);
-    current = data;
-    current.sequences = body.sequences;   // for the networks of the species found
-    current.coords = coords;           // sampling places, kept in the page
-    current.tableLoaded = coordTable.size > 0;
+    full = data;
+    full.request = body;
+    full.sequences = body.sequences;   // for the networks of the species found
+    full.coords = coords;              // sampling places, kept in the page
+    full.tableLoaded = coordTable.size > 0;
+    full.levels = new Map();           // results of each level, once computed
     selected = null;
     $("show-all").hidden = true;
     setStatus("");
-    showView(true);
-    renderResults();
-    drawMap();
-    updateSummary();
+    await showLevel(chosenIdentity(), true);
   } catch (e) {
     if (fromStart || !current) {
       setStatus(e.message, true);
@@ -931,6 +1000,8 @@ function clearInput() {
 function newSearch() {
   clearInput();
   current = null;
+  full = null;
+  levelToken++;
   selected = null;
   placeBounds = null;
   if (layer) layer.clearLayers();

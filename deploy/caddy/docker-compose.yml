@@ -12,6 +12,9 @@ services:
   asvatlas:
     image: ghcr.io/alexology/asvatlas:latest
     restart: unless-stopped
+    # If ASVAtlas ever uses more memory, only its container is restarted: Caddy
+    # and the system keep running (a search of 1,000 ASVs used about 1.5 GB).
+    mem_limit: 3g
     volumes:
       - ./data:/data:ro
       - usage:/opt/stats            # usage log (counts only), kept across updates
@@ -25,6 +28,8 @@ services:
       # Occurrence columns published with the matches.
       ASVATLAS_FIELDS: dataset,site,read_abundance
       ASVATLAS_ALLOWED_HOSTS: asvatlas.example.org
+      # At most 500 query ASVs per search (searches run one at a time).
+      ASVATLAS_MAX_QUERIES: "500"
   caddy:
     image: caddy:2
     restart: unless-stopped

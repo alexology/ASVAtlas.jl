@@ -90,3 +90,7 @@
   `deploy/caddy/` with Caddy (HTTPS, access log with truncated IP addresses,
   reports at /stats/ behind a password) and GoAccess (`update-stats.sh`);
   privacy note in the footer.
+- Changing the similarity no longer repeats the search: the page searches
+  once at the lowest level and filters, searching again only the ASVs at the
+  limit of matches (results equal to direct searches at every level, checked
+  on 1,000 ASVs).

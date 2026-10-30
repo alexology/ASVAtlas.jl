@@ -50,7 +50,11 @@ one), then **Find in the world**. The search starts with identical records
 options**.
 
 After the search the map comes first. Above it, the similarity (100, 99, 98,
-97, 95 or 90%) widens the search at once, and a sentence gives the answer,
+97, 95 or 90%) widens or narrows the search at once: the page searches once at
+the lowest level and filters its results, asking the server again only for
+the ASVs that reached the largest number of matches (whose list could be
+incomplete at a higher level), so the results are those of a search at the
+chosen level, and a sentence gives the answer,
 e.g. "4 of your 5 ASVs are found at 11 places in Canada, Germany and United
 Kingdom: 76 records ≥ 97% similar". **Edit ASVs** goes back to the form with the
 same ASVs and coordinates; **New search** empties the form, the coordinates,
