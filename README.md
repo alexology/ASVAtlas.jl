@@ -324,6 +324,18 @@ Two sources, both without cookies and without personal data:
 (`15 3 * * * cd /srv/asvatlas && sh update-stats.sh`). The page has a short
 privacy note in its footer saying what is kept.
 
+### Limits of the open service
+
+The page has no accounts, so its use is bounded per client address: searches
+(`ASVATLAS_RATE_SEARCHES`, 60) and networks (`ASVATLAS_RATE_NETWORKS`, 30) per
+10 minutes, 2 requests in progress per client, at most `ASVATLAS_MAX_QUEUED`
+(8) searches and networks waiting for the running one (HTTP 429 or 503 with
+`Retry-After`), request bodies of at most `ASVATLAS_MAX_BODY_MB` that must
+arrive within 60 s. Behind Caddy or nginx set `ASVATLAS_TRUST_FORWARDED=true`
+(the Compose files do), so that the client is the visitor and not the proxy.
+The container runs read-only, without capabilities and with
+`no-new-privileges`; Caddy adds HSTS and time limits for slow clients.
+
 ### Container image
 
 The workflow `.github/workflows/docker.yml` builds `deploy/Dockerfile` on

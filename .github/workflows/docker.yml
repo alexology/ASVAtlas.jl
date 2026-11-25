@@ -1,9 +1,17 @@
-# Builds the container image of ASVAtlas (deploy/Dockerfile) and publishes it
-# on the GitHub Container Registry as ghcr.io/alexology/asvatlas:
+# Builds the container image of ASVAtlas (deploy/Dockerfile), starts it with
+# the production hardening (read-only file system, no capabilities, no new
+# privileges, process and memory limits) on the example data and checks it,
+# then publishes it on the GitHub Container Registry as ghcr.io/alexology/asvatlas:
 #   push to main  -> tags "main", "latest" and "sha-<commit>"
 #   tag v1.2.3    -> tags "1.2.3" and "1.2"
-#   pull request  -> built only, not published
+#   every Monday  -> rebuilt, to pick up security updates of the base image
+#   pull request  -> built and checked only, not published
 # The image holds the code only: the reference data are mounted at run time.
+#
+# Supply chain: the three unregistered dependencies are checked out at the
+# commits below (not at the head of their branches), and the actions are pinned
+# to commit SHAs (Dependabot keeps them current). Move a dependency forward by
+# changing its commit here after reviewing it.
 
 name: Container image
 
@@ -12,11 +20,12 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  schedule:
+    - cron: "37 4 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -24,41 +33,113 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/alexology/asvatlas
+  NUCLEOTIDESEARCH_REF: f116ec1c8912b47631dee2b5eb9ab94995285812
+  HAPLOTYPENETWORKS_REF: 0a895d8fba0ba6ece881e10c17e3a0662e46f75a
+  PROFILEALIGNMENTS_REF: 96e50b0b0010409175dc20f154dc0c72947edb70
 
 jobs:
-  image:
+  smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       # The Dockerfile expects ASVAtlas.jl and its unregistered dependencies
-      # (`[sources]` in Project.toml) side by side, as on the development
-      # machine; the three dependencies are public repositories.
-      - uses: actions/checkout@v4
+      # (`[sources]` in Project.toml) side by side, as on the development machine.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: ASVAtlas.jl
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: alexology/NucleotideSearch.jl
+          ref: ${{ env.NUCLEOTIDESEARCH_REF }}
           path: NucleotideSearch.jl
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: alexology/HaplotypeNetworks.jl
+          ref: ${{ env.HAPLOTYPENETWORKS_REF }}
           path: HaplotypeNetworks.jl
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: alexology/ProfileAlignments.jl
+          ref: ${{ env.PROFILEALIGNMENTS_REF }}
+          path: ProfileAlignments.jl
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ASVAtlas.jl/deploy/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: asvatlas:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start the container as in production, on the example data
+        run: |
+          docker volume create asvatlas-usage
+          docker run -d --name asvatlas --read-only --tmpfs /tmp:size=64m \
+            -v "$PWD/ASVAtlas.jl/examples/data:/data:ro" -v asvatlas-usage:/opt/stats \
+            -e ASVATLAS_FASTA=/data/reference.fasta -e ASVATLAS_METADATA=/data/reference_metadata.tsv \
+            -e ASVATLAS_ALLOWED_HOSTS=127.0.0.1 -e ASVATLAS_MAX_BODY_MB=2 \
+            --security-opt no-new-privileges:true --cap-drop ALL --pids-limit 256 --memory 3g \
+            -p 127.0.0.1:8080:8080 asvatlas:smoke
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/health && break
+            sleep 5
+          done
+          curl -fsS http://127.0.0.1:8080/health
+      - name: Check searches, limits and refusals
+        run: |
+          set -e
+          base=http://127.0.0.1:8080
+          code() { curl -s -o /dev/null -w "%{http_code}" "$@"; }
+          python3 -c "import json; print(json.dumps({'sequences': open('ASVAtlas.jl/examples/data/queries.fasta').read()}))" > q.json
+          test "$(code -X POST -H "Content-Type: application/json" --data-binary @q.json $base/api/search)" = 200
+          test "$(code -X OPTIONS -H "Origin: https://evil.example" -H "Access-Control-Request-Method: POST" \
+                 -H "Access-Control-Request-Headers: content-type,x-custom" $base/api/search)" = 204
+          test "$(code -X POST -H "Content-Type: application/json" --data '{}' $base/)" = 405
+          test "$(code -H "Host: evil.example" $base/health)" = 421
+          curl -fsS -D - -o /dev/null $base/ | grep -i "permissions-policy"
+          docker stats --no-stream asvatlas
+      - name: Container log
+        if: always()
+        run: docker logs asvatlas 2>&1 | tail -60
+
+  image:
+    needs: smoke
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: ASVAtlas.jl
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: alexology/NucleotideSearch.jl
+          ref: ${{ env.NUCLEOTIDESEARCH_REF }}
+          path: NucleotideSearch.jl
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: alexology/HaplotypeNetworks.jl
+          ref: ${{ env.HAPLOTYPENETWORKS_REF }}
+          path: HaplotypeNetworks.jl
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: alexology/ProfileAlignments.jl
+          ref: ${{ env.PROFILEALIGNMENTS_REF }}
           path: ProfileAlignments.jl
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.IMAGE }}
           tags: |
@@ -68,12 +149,12 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: ASVAtlas.jl/deploy/Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

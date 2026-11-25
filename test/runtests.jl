@@ -247,7 +247,8 @@ end
     port, sock = listenany(ip"127.0.0.1", 20000)
     close(sock)
     server = @test_logs (:info, r"ASVAtlas") (:info, r"Warm-up") match_mode = :any serve(
-        ref; port, async = true, max_queries = 10, max_hits = 20, max_body = 100_000)
+        ref; port, async = true, max_queries = 10, max_hits = 20, max_body = 100_000,
+        rate_searches = 0, rate_networks = 0, max_inflight_per_client = 0)
     url = "http://127.0.0.1:$port"
     get(p) = HTTP.get(url * p; status_exception = false)
     post(body) = HTTP.post(url * "/api/search", ["Content-Type" => "application/json"], body;
@@ -356,7 +357,7 @@ end
     port, sock = listenany(ip"127.0.0.1", 21000)
     close(sock)
     server = serve(ref; port, async = true, warmup = false, max_queries = 10, max_hits = 20,
-                   max_length = 1000, max_body = 100_000,
+                   max_length = 1000, max_body = 100_000, rate_searches = 0, rate_networks = 0, max_inflight_per_client = 0, 
                    allowed_hosts = ["asvatlas.example.org", "127.0.0.1"])
     url = "http://127.0.0.1:$port"
     get(p, h = Pair{String,String}[]) = HTTP.get(url * p, h; status_exception = false)
@@ -430,6 +431,65 @@ end
     end
 end
 
+@testset "Open service: limits, preflight, slow bodies, hosts, TSV" begin
+    ref = load_reference(joinpath(EXAMPLE, "reference.fasta");
+                         metadata = joinpath(EXAMPLE, "reference_metadata.tsv"), name = "Example")
+    fasta = read(joinpath(EXAMPLE, "queries.fasta"), String)
+    port, sock = listenany(ip"127.0.0.1", 22000)
+    close(sock)
+    # No allow-list on a loopback address: loopback names only (DNS rebinding).
+    server = serve(ref; port, async = true, warmup = false, trust_forwarded = true, rate_searches = 2,
+                   body_timeout = 1)
+    url = "http://127.0.0.1:$port"
+    search(ip) = HTTP.post(url * "/api/search", ["Content-Type" => "application/json",
+                                                 "X-Forwarded-For" => "198.51.100.9, $ip"],
+                           JSON3.write((sequences = fasta,)); status_exception = false)
+    try
+        @test HTTP.get(url * "/health", ["Host" => "evil.example"]; status_exception = false).status == 421
+        @test HTTP.get(url * "/health", ["Host" => "localhost:1"]; status_exception = false).status == 200
+        # Preflights: 204 without CORS permission (Genie's own handling could fail with a 500).
+        pre = HTTP.request("OPTIONS", url * "/api/search", ["Origin" => "https://evil.example",
+                           "Access-Control-Request-Method" => "POST",
+                           "Access-Control-Request-Headers" => "content-type,x-custom"]; status_exception = false)
+        @test pre.status == 204 && isempty(HTTP.header(pre, "Access-Control-Allow-Origin"))
+        @test occursin("camera=()", HTTP.header(HTTP.get(url * "/"), "Permissions-Policy"))
+        # Only searches and networks take a body.
+        @test HTTP.post(url * "/", ["Content-Type" => "application/json"], "{}"; status_exception = false).status == 405
+        # Per-client searches: the client is the last X-Forwarded-For entry.
+        @test search("203.0.113.1").status == 200 && search("203.0.113.1").status == 200
+        third = search("203.0.113.1")
+        @test third.status == 429 && parse(Int, HTTP.header(third, "Retry-After")) > 0
+        @test search("203.0.113.2").status == 200
+        # A stalled body is cut off after body_timeout; the server keeps answering.
+        s = connect(ip"127.0.0.1", port)
+        write(s, "POST /api/search HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Forwarded-For: 203.0.113.3\r\n" *
+                 "Content-Type: application/json\r\nContent-Length: 100\r\n\r\n{")
+        closed = Threads.@spawn eof(s)
+        @test timedwait(() -> istaskdone(closed), 15.0) === :ok
+        close(s)
+        @test HTTP.get(url * "/health").status == 200
+    finally
+        shutdown(server)
+    end
+    # Searches and networks waiting for the lock are bounded (checked before the body is read).
+    g = ASVAtlas._Guard(; max_queued = 1, max_inflight_per_client = 0, rate_searches = 0)
+    @test ASVAtlas._admit!(g, "a", :search) == "a" && ASVAtlas._admit!(g, "b", :search) == "b"
+    busy = try
+        ASVAtlas._admit!(g, "c", :search)
+    catch e
+        e
+    end
+    @test busy isa ASVAtlas._RequestError && busy.status == 503 && busy.retry_after > 0
+    ASVAtlas._release!(g, "a")
+    @test ASVAtlas._admit!(g, "c", :search) == "c"
+    # Tables written for spreadsheets cannot run formulas (CSV/TSV injection).
+    io = IOBuffer()
+    write_table(io, (id = ["=1+1", "@SUM(A1)", "-cmd", "ASV1", "-3.5"], n = [-2, 3, 4, 5, 6]))
+    text = String(take!(io))
+    @test occursin("'=1+1\t-2", text) && occursin("'@SUM(A1)", text) && occursin("'-cmd", text)
+    @test occursin("\nASV1\t5", text) && occursin("\n-3.5\t6", text)
+end
+
 @testset "Haplotype networks" begin
     ref = load_reference(joinpath(EXAMPLE, "reference.fasta");
                          metadata = joinpath(EXAMPLE, "reference_metadata.tsv"))
@@ -491,7 +551,8 @@ end
     port, sock = listenany(ip"127.0.0.1", 22000)
     close(sock)
     fasta = read(joinpath(EXAMPLE, "queries.fasta"), String)
-    server = serve(ref; port, async = true, warmup = true, max_network_sequences = 5, example = fasta)
+    server = serve(ref; port, async = true, warmup = true, max_network_sequences = 5, example = fasta,
+                   rate_searches = 0, rate_networks = 0, max_inflight_per_client = 0)
     url = "http://127.0.0.1:$port"
     post(body; type = "application/json") =
         HTTP.post(url * "/api/network", ["Content-Type" => type], body; status_exception = false)
@@ -636,7 +697,7 @@ end
         log = joinpath(dir, "stats", "usage.tsv")
         port, sock = listenany(ip"127.0.0.1", 23000)
         close(sock)
-        server = serve(ref; port, async = true, warmup = true, usage_log = log)
+        server = serve(ref; port, async = true, warmup = true, usage_log = log, rate_searches = 0, rate_networks = 0, max_inflight_per_client = 0)
         url = "http://127.0.0.1:$port"
         post(path, body) = HTTP.post(url * path, ["Content-Type" => "application/json"],
                                      JSON3.write(body); status_exception = false)
@@ -679,7 +740,9 @@ end
                 name = "r.fa", marker = "", primers = "", about = nothing, usage_log = "", host = "0.0.0.0", port = 9000,
                 max_queries = 5, max_hits = 500,
                 max_length = 20_000, max_network_sequences = 300, min_identity = 90,
-                example = nothing, allowed_hosts = String[])
+                example = nothing, allowed_hosts = String[],
+                trust_forwarded = false, max_queued = 8, rate_searches = 60, rate_networks = 30,
+                max_body = 16 * 2^20)
     @test ASVAtlas._parse_cli(["--fasta", "r.fa", "--min-identity", "97"], noenv).min_identity == 97
     @test ASVAtlas._parse_cli(["--fasta", "r.fa", "--example", "q.fa"], noenv).example == "q.fa"
     o = ASVAtlas._parse_cli(["--fasta", "r.fa", "--marker", "COI-5P"], Dict("ASVATLAS_PRIMERS" => "BF3-BR2"))

@@ -14,6 +14,16 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"     # published by nginx; use "8080:8080" to expose directly
+    # Hardening (checked in CI with the same options): read-only image, no
+    # capabilities, no privilege gain, at most 256 processes.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
     volumes:
       - ./data:/data:ro
       - usage:/opt/stats            # usage log (counts only), kept across updates
@@ -28,5 +38,9 @@ services:
       # ASVATLAS_FIELDS: site,habitat,date
       # ASVATLAS_COORDINATE_DIGITS: "2"
       ASVATLAS_ALLOWED_HOSTS: asvatlas.example.org
+      # The port is reachable from this host only, through the local proxy, which
+      # must set X-Forwarded-For (nginx: $proxy_add_x_forwarded_for).
+      ASVATLAS_TRUST_FORWARDED: "true"
+      ASVATLAS_MAX_BODY_MB: "2"
 volumes:
   usage:

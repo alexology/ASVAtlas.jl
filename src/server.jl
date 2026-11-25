@@ -35,18 +35,23 @@ const _SECURITY_HEADERS = ["X-Content-Type-Options" => "nosniff",
                            "Referrer-Policy" => "strict-origin",
                            "X-Frame-Options" => "DENY",
                            "Cross-Origin-Opener-Policy" => "same-origin",
-                           "Cross-Origin-Resource-Policy" => "same-origin"]
+                           "Cross-Origin-Resource-Policy" => "same-origin",
+                           # The page needs no device or browser feature.
+                           "Permissions-Policy" => "camera=(), microphone=(), geolocation=(), payment=(), " *
+                                                   "usb=(), serial=(), bluetooth=()"]
 const _STATUS_TEXT = Dict(400 => "bad request", 401 => "unauthorized", 403 => "forbidden",
-                          404 => "not found", 405 => "method not allowed",
+                          404 => "not found", 405 => "method not allowed", 408 => "request timeout",
                           413 => "request too large", 415 => "unsupported media type",
-                          421 => "unknown host", 500 => "internal error")
+                          421 => "unknown host", 429 => "too many requests", 500 => "internal error",
+                          503 => "busy")
 
 # Default lowest identity of the web API (`serve(...; min_identity)`): low
 # values would let anyone list the reference by searching unrelated
 # sequences, and make every reference a candidate with very wide bands.
 const _MIN_WEB_IDENTITY = 90
-# At most this many hit rows (queries × hits per query) in one response.
-const _MAX_HIT_ROWS = 1_000_000
+# At most this many hit rows (queries × hits per query) in one response, which
+# keeps answers to some tens of megabytes.
+const _MAX_HIT_ROWS = 100_000
 
 _response(status, body, type; cache = "no-store") =
     HTTP.Response(status, ["Content-Type" => type, "Cache-Control" => cache], body)
@@ -327,7 +332,9 @@ end
 struct _RequestError <: Exception
     status::Int
     msg::String
+    retry_after::Int                 # seconds, sent as Retry-After when positive
 end
+_RequestError(status, msg) = _RequestError(status, msg, 0)
 
 # Host name of a Host header value, without port ("[::1]:8080" -> "::1").
 function _host_name(h::AbstractString)
@@ -362,35 +369,89 @@ function _read_body(stream::HTTP.Stream, max_body::Int)
     return take!(buf)
 end
 
-function _stream_handler(allowed_hosts::Set{String}, max_body::Int)
+# Reads and discards the rest of a refused request (at most `limit` bytes, no
+# buffering): closing a connection with unread data makes some systems (Windows)
+# reset it, and the client would never see the answer.
+function _drain!(stream::HTTP.Stream, limit::Int)
+    n = 0
+    try
+        while !eof(stream)
+            n += length(readavailable(stream))
+            n > limit && return
+        end
+    catch err
+        err isa Union{EOFError,Base.IOError,HTTP.Exceptions.HTTPError} || rethrow()
+    end
+    return
+end
+
+function _stream_handler(allowed_hosts::Set{String}, max_body::Int, guard::_Guard = _Guard())
     return function (stream::HTTP.Stream)
         req = stream.message
         close_after = false
+        admitted = nothing
         res = try
             _check_request(req, allowed_hosts, max_body)
-            req.body = _read_body(stream, max_body)
+            # Same-origin application without CORS: preflights are answered here,
+            # before Genie (whose preflight handling can fail with a 500).
+            req.method == "OPTIONS" && throw(_RequestError(204, ""))
+            kind = get(_HEAVY, (req.method, first(split(req.target, '?'))), nothing)
+            if kind !== nothing
+                # Limits are checked before the body is read: refused or waiting
+                # requests never hold a body in memory.
+                admitted = _admit!(guard, _client_address(guard, stream), kind)
+            elseif req.method == "POST"
+                throw(_RequestError(405, "method not allowed"))
+            end
+            req.body = _with_deadline(() -> _read_body(stream, max_body), stream, guard.body_timeout)
             HTTP.closeread(stream)
             Genie.Server.setup_http_listener(req, HTTP.Response(); stream)
         catch err
-            if err isa _RequestError
-                close_after = err.status in (400, 413)   # unread body left on the connection
-                _error(err.status, err.msg)
+            if err isa _RequestError && err.status == 204
+                HTTP.Response(204, ["Allow" => "GET, HEAD, POST", "Cache-Control" => "no-store"])
+            elseif err isa _RequestError
+                close_after = err.status in (400, 405, 408, 413, 429, 503)   # unread body left on the connection
+                # A body refused before reading (405, 413, 429, 503) is read and discarded first,
+                # within 5 s and when its declared length is reasonable: closing with unread
+                # data makes some systems (Windows) reset the connection before the client
+                # reads the answer. Much larger or stalled bodies are not waited for.
+                if err.status in (405, 413, 429, 503)
+                    n = tryparse(Int, strip(HTTP.header(req, "Content-Length")))
+                    if n !== nothing && n <= 4 * max_body
+                        try
+                            _with_deadline(() -> _drain!(stream, 4 * max_body), stream, 5)
+                        catch
+                        end
+                    end
+                end
+                r = _error(err.status, err.msg)
+                err.retry_after > 0 && HTTP.setheader(r, "Retry-After" => string(err.retry_after))
+                r
             else
                 @error "Request failed" exception = (err, catch_backtrace())
                 _error(500, "internal error, see the server log")
             end
+        finally
+            admitted === nothing || _release!(guard, admitted)
         end
         _harden!(res)
         close_after && HTTP.setheader(res, "Connection" => "close")
         req.response = res
         res.request = req
-        HTTP.startwrite(stream)
-        write(stream, res.body)
+        # The connection may already be closed (expired body or client gone).
+        isopen(stream.stream) || return
+        try
+            HTTP.startwrite(stream)
+            write(stream, res.body)
+        catch err
+            err isa Union{Base.IOError,EOFError,HTTP.Exceptions.HTTPError} || rethrow()
+            return
+        end
         # A refused body is not read: close the connection rather than let
         # HTTP.jl read (and discard) the rest of it, and mark the request as
         # read so that HTTP.jl does not log the unread body as an error.
         if close_after
-            close(stream.stream)
+            isopen(stream.stream) && close(stream.stream)
             stream.ntoread = 0
         end
         return
@@ -402,7 +463,9 @@ end
           max_queries = 10_000, max_hits = 500, max_length = 20_000,
           max_body = 16 * 2^20, max_connections = 128, allowed_hosts = String[],
           max_network_sequences = 300, min_identity = 90, threads = Threads.nthreads(),
-          warmup = true)
+          warmup = true, trust_forwarded = false, rate_window = 600, rate_searches = 60,
+          rate_networks = 30, max_inflight_per_client = 2, max_queued = 8,
+          body_timeout = 60, idle_timeout = 900)
 
 Start the web application (a Genie.jl application) on `http://host:port`.
 The page answers the question "where in the world is my ASV?": it accepts
@@ -431,8 +494,20 @@ Limits against misuse: `max_queries` sequences per search, each of at most
 `max_body` bytes (refused before being read) and `max_connections` open
 connections. `allowed_hosts` (e.g. `["asvatlas.example.org"]`) rejects
 requests whose `Host` header names another host, which protects against DNS
-rebinding; empty accepts any. The page and its files are served from a fixed
+rebinding; empty accepts loopback names on a loopback `host` and any name
+otherwise (with a warning). The page and its files are served from a fixed
 list, with a restrictive Content Security Policy.
+
+The service is open (no accounts), so its use is bounded per client address
+(the last `X-Forwarded-For` entry with `trust_forwarded = true`, to be set only
+behind a reverse proxy that is the sole way in): `rate_searches` searches and
+`rate_networks` networks per `rate_window` seconds, `max_inflight_per_client`
+requests in progress (HTTP 429 with `Retry-After`; 0 disables a limit). At most
+`max_queued` searches and networks wait for the running one (HTTP 503 beyond);
+these checks come before the body is read. A body must arrive within
+`body_timeout` seconds (HTTP 408) and connections without incoming data close
+after `idle_timeout` seconds, longer than any search. Only searches and networks
+accept a body; `OPTIONS` gets 204 without CORS permission.
 
 `usage_log` is a file to which each search and network adds one line of
 counts (time, number of query ASVs and of ASVs with matches, similarity,
@@ -465,8 +540,15 @@ function serve(ref::ReferenceDataset; host::AbstractString = "127.0.0.1", port::
                max_connections::Integer = 128, allowed_hosts = String[],
                max_network_sequences::Integer = 300, min_identity::Real = _MIN_WEB_IDENTITY,
                threads::Integer = Threads.nthreads(), warmup::Bool = true,
-               example::AbstractString = "", usage_log::AbstractString = "")
+               example::AbstractString = "", usage_log::AbstractString = "",
+               trust_forwarded::Bool = false, rate_window::Real = 600, rate_searches::Integer = 60,
+               rate_networks::Integer = 30, max_inflight_per_client::Integer = 2,
+               max_queued::Integer = 8, body_timeout::Real = 60, idle_timeout::Integer = 900)
     0 < min_identity <= 100 || throw(ArgumentError("min_identity must be in (0, 100]"))
+    rate_window > 0 && body_timeout > 0 && idle_timeout > 0 ||
+        throw(ArgumentError("rate_window, body_timeout and idle_timeout must be positive"))
+    min(rate_searches, rate_networks, max_inflight_per_client, max_queued) >= 0 ||
+        throw(ArgumentError("rate and queue limits must not be negative (0 disables them)"))
     sizeof(example) <= 2^16 || throw(ArgumentError("the example must be at most 64 KiB"))
     ip = string(Sockets.getaddrinfo(host))
     _check_port(ip, Int(port))
@@ -487,9 +569,12 @@ function serve(ref::ReferenceDataset; host::AbstractString = "127.0.0.1", port::
     Genie.config.websockets_server = false
     _register_routes(ref; max_queries, max_hits, max_length, threads, max_network_sequences,
                      min_identity, example = String(example))
-    hosts = Set{String}(lowercase(strip(String(h))) for h in allowed_hosts)
-    listener = HTTP.listen!(_stream_handler(hosts, Int(max_body)), parse(Sockets.IPAddr, ip),
-                            Int(port); max_connections = Int(max_connections))
+    hosts = _accepted_hosts(allowed_hosts, host)
+    guard = _Guard(; trust_forwarded, window = rate_window, rate_searches, rate_networks,
+                   max_inflight_per_client, max_queued, body_timeout)
+    listener = HTTP.listen!(_stream_handler(hosts, Int(max_body), guard), parse(Sockets.IPAddr, ip),
+                            Int(port); max_connections = Int(max_connections),
+                            readtimeout = Int(idle_timeout))
     server = Genie.Server.ServersCollection(webserver = listener)
     @info "ASVAtlas: $(ref) at http://$(host == "0.0.0.0" ? "localhost" : host):$port"
     # Everything in the occurrences is public: say what that is.

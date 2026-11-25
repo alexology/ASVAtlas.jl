@@ -37,5 +37,11 @@ USER asvatlas
 # The Manifest is resolved here (local Manifests are excluded from the build).
 RUN julia --project=/opt/ASVAtlas.jl -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
+# Read-only container: a writable depot in /tmp comes first, for what Julia and
+# Pkg write at run time (Genie's start-up asks Pkg for the dependencies, which
+# logs the environment use); the installed and compiled packages are read from
+# /opt/depot.
+ENV JULIA_DEPOT_PATH=/tmp/julia-depot:/opt/depot
+
 EXPOSE 8080
 CMD ["julia", "/opt/ASVAtlas.jl/bin/asvatlas.jl"]

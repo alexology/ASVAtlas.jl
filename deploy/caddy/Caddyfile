@@ -4,8 +4,29 @@
 # with your domain (also in docker-compose.yml) and the password hash, made with
 #   docker compose run --rm caddy caddy hash-password
 
+{
+	servers {
+		# Slow or stalled clients cannot hold connections: headers within 10 s,
+		# request bodies within 60 s. Responses have no time limit (a search of
+		# many ASVs or a network can take minutes).
+		timeouts {
+			read_header 10s
+			read_body 60s
+			idle 2m
+		}
+	}
+}
+
 asvatlas.example.org {
 	encode gzip
+
+	# HTTPS only for a year (the domain itself, not its subdomains).
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Request bodies: at most ASVATLAS_MAX_BODY_MB (2 MB here); a little margin.
+	request_body {
+		max_size 3MB
+	}
 
 	# Usage reports written by update-stats.sh (index.html: visits;
 	# usage.txt: searches and networks).

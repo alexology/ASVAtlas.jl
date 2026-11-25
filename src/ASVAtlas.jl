@@ -39,6 +39,7 @@ include("search.jl")
 include("output.jl")
 include("networks.jl")
 include("usage.jl")
+include("limits.jl")
 include("server.jl")
 include("cli.jl")
 

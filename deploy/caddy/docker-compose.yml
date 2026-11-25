@@ -15,6 +15,16 @@ services:
     # If ASVAtlas ever uses more memory, only its container is restarted: Caddy
     # and the system keep running (a search of 1,000 ASVs used about 1.5 GB).
     mem_limit: 3g
+    # Hardening (checked in CI with the same options): read-only image, no
+    # capabilities, no privilege gain, at most 256 processes.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
     volumes:
       - ./data:/data:ro
       - usage:/opt/stats            # usage log (counts only), kept across updates
@@ -30,6 +40,14 @@ services:
       ASVATLAS_ALLOWED_HOSTS: asvatlas.example.org
       # At most 500 query ASVs per search (searches run one at a time).
       ASVATLAS_MAX_QUERIES: "500"
+      # Open service: limits per client address, which comes from X-Forwarded-For
+      # because only Caddy reaches the container.
+      ASVATLAS_TRUST_FORWARDED: "true"
+      ASVATLAS_RATE_SEARCHES: "60"
+      ASVATLAS_RATE_NETWORKS: "30"
+      ASVATLAS_MAX_QUEUED: "8"
+      # 500 ASVs of a few hundred bases fit in well under 2 MB.
+      ASVATLAS_MAX_BODY_MB: "2"
   caddy:
     image: caddy:2
     restart: unless-stopped

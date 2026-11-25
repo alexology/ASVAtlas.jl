@@ -79,7 +79,9 @@ end
 
 Write a column table (a `NamedTuple` of equally long vectors, such as
 [`summary_table`](@ref)) as tab-separated text with a header. Tabs and line
-breaks inside values become spaces, `missing` an empty field.
+breaks inside values become spaces, `missing` an empty field, and text that a
+spreadsheet would run as a formula (leading `=`, `+`, `-`, `@`) gets a leading
+apostrophe.
 """
 function write_table(io::IO, table::NamedTuple)
     println(io, join(string.(keys(table)), '\t'))

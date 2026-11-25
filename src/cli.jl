@@ -22,6 +22,12 @@ const _CLI_OPTIONS = (
     ("min-identity", "ASVATLAS_MIN_IDENTITY", "lowest similarity (%) accepted by the page (default 90)"),
     ("max-network-sequences", "ASVATLAS_MAX_NETWORK_SEQUENCES",
      "most sequences in a haplotype network (default 300)"),
+    ("trust-forwarded", "ASVATLAS_TRUST_FORWARDED",
+     "true behind a reverse proxy: client address from X-Forwarded-For (per-client limits)"),
+    ("max-queued", "ASVATLAS_MAX_QUEUED", "searches and networks waiting for the running one (default 8)"),
+    ("rate-searches", "ASVATLAS_RATE_SEARCHES", "searches per client and 10 minutes (default 60; 0: no limit)"),
+    ("rate-networks", "ASVATLAS_RATE_NETWORKS", "networks per client and 10 minutes (default 30; 0: no limit)"),
+    ("max-body-mb", "ASVATLAS_MAX_BODY_MB", "largest request body in MB (default 16)"),
     ("allowed-hosts", "ASVATLAS_ALLOWED_HOSTS",
      "comma-separated host names accepted in requests (default: any)"),
     ("example", "ASVATLAS_EXAMPLE",
@@ -88,7 +94,16 @@ function _parse_cli(args::AbstractVector{<:AbstractString}, env = ENV)
             min_identity = int("min-identity", 90),
             example = get(opts, "example", nothing),
             allowed_hosts = String[strip(h) for h in split(get(opts, "allowed-hosts", ""), ',')
-                                   if !isempty(strip(h))])
+                                   if !isempty(strip(h))],
+            trust_forwarded = _cli_bool(get(opts, "trust-forwarded", "false"), "trust-forwarded"),
+            max_queued = int("max-queued", 8), rate_searches = int("rate-searches", 60),
+            rate_networks = int("rate-networks", 30), max_body = int("max-body-mb", 16) * 2^20)
+end
+
+function _cli_bool(v, key)
+    b = tryparse(Bool, lowercase(strip(v)))
+    b === nothing && throw(ArgumentError("--$key must be true or false, got \"$v\""))
+    return b
 end
 
 # Writes each log record at once: stderr redirected to a file is buffered
@@ -142,6 +157,8 @@ function main(args = ARGS)
     end
     serve(ref; example, usage_log = o.usage_log, host = o.host, port = o.port, max_queries = o.max_queries, max_hits = o.max_hits,
           max_length = o.max_length, allowed_hosts = o.allowed_hosts,
-          max_network_sequences = o.max_network_sequences, min_identity = o.min_identity)
+          max_network_sequences = o.max_network_sequences, min_identity = o.min_identity,
+          trust_forwarded = o.trust_forwarded, max_queued = o.max_queued, rate_searches = o.rate_searches,
+          rate_networks = o.rate_networks, max_body = o.max_body)
     return 0
 end

@@ -9,3 +9,17 @@
 **/.git
 **/test
 **/reference
+# Reference data never go into the image, even when they lie in the working copy
+# of a local build: they are mounted at run time.
+ASVAtlas.jl/data
+ASVAtlas.jl/deploy/data
+ASVAtlas.jl/examples
+**/*.fasta
+**/*.fa
+**/*.fastq
+**/*.tsv
+**/*.csv
+**/*.xlsx
+**/freshwater_invertebrates*
+# Package data needed at run time (scoring matrix of ProfileAlignments).
+!ProfileAlignments.jl/data/BLOSUM62.tsv

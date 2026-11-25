@@ -73,6 +73,13 @@ function _parse_delimited(text::AbstractString, d::Char)
 end
 
 # Field for a tab-separated output file: tabs and line breaks become spaces.
-_tsv_field(x) = replace(string(x), r"[\t\r\n]" => " ")
+# Text that a spreadsheet would run as a formula (leading =, +, - or @: "CSV
+# injection") gets a leading apostrophe; numbers keep their form.
+function _tsv_field(x)
+    s = replace(string(x), r"[\t\r\n]" => " ")
+    (x isa Real || isempty(s) || !(first(s) in ('=', '+', '-', '@'))) && return s
+    occursin(r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$", s) && return s
+    return "'" * s
+end
 _tsv_field(::Missing) = ""
 _tsv_field(x::AbstractFloat) = isnan(x) ? "" : string(round(x; digits = 6))

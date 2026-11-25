@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased (2026-11-25): security hardening of the open service
+
+- Per-client limits (client address from `X-Forwarded-For` with
+  `trust_forwarded`/`ASVATLAS_TRUST_FORWARDED`, behind the proxy only):
+  searches and networks per 10 minutes, requests in progress per client; at
+  most `max_queued` searches and networks waiting for the running one (HTTP
+  429/503 with `Retry-After`), checked before the body is read.
+- Request bodies must arrive within `body_timeout` (60 s, then 408); idle
+  connections close after `idle_timeout` (900 s); only searches and networks
+  accept a body (other POSTs: 405 before reading).
+- `OPTIONS` answered with 204 and no CORS permission (Genie's preflight
+  handling could fail with a 500); `Permissions-Policy` header; without
+  `allowed_hosts`, a loopback server accepts loopback host names only.
+- At most 100,000 hit rows per answer (was 1,000,000).
+- `write_table`: text starting with `=`, `+`, `-` or `@` gets a leading
+  apostrophe (CSV/TSV injection); the page's TSV downloads already did so.
+- Deployment: Caddy with HSTS and time limits for slow clients; Compose with a
+  read-only container, no capabilities, `no-new-privileges`, process limit;
+  `JULIA_DEPOT_PATH` with a writable depot in `/tmp`; reference data excluded
+  from local Docker build contexts. The workflow checks out the three
+  unregistered dependencies at fixed commits, pins actions to SHAs
+  (Dependabot), starts the image with the production options on the example
+  data before publishing it, and rebuilds it every Monday.
+
 ## 0.1.0 (2026-10-25)
 
 - First version: reference ASVs from FASTA (optionally SINTAX headers) and an
