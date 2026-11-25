@@ -44,20 +44,20 @@ jobs:
     steps:
       # The Dockerfile expects ASVAtlas.jl and its unregistered dependencies
       # (`[sources]` in Project.toml) side by side, as on the development machine.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ASVAtlas.jl
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexology/NucleotideSearch.jl
           ref: ${{ env.NUCLEOTIDESEARCH_REF }}
           path: NucleotideSearch.jl
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexology/HaplotypeNetworks.jl
           ref: ${{ env.HAPLOTYPENETWORKS_REF }}
           path: HaplotypeNetworks.jl
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexology/ProfileAlignments.jl
           ref: ${{ env.PROFILEALIGNMENTS_REF }}
@@ -111,20 +111,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ASVAtlas.jl
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexology/NucleotideSearch.jl
           ref: ${{ env.NUCLEOTIDESEARCH_REF }}
           path: NucleotideSearch.jl
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexology/HaplotypeNetworks.jl
           ref: ${{ env.HAPLOTYPENETWORKS_REF }}
           path: HaplotypeNetworks.jl
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: alexology/ProfileAlignments.jl
           ref: ${{ env.PROFILEALIGNMENTS_REF }}
